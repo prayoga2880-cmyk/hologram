@@ -1,0 +1,98 @@
+<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>My Personal Hologram</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
+<style>
+html,body{margin:0;height:100%;background:#050a1a;color:#e8f9ff;font-family:system-ui,sans-serif;overflow:hidden}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:5}
+#start{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(circle at 50% 30%,#0b2a4a,#050a1a);text-align:center;padding:24px}
+h1{margin:0;font-size:26px;letter-spacing:4px;color:#00e5ff;text-shadow:0 0 16px #00e5ff}
+p{margin:0;max-width:320px;opacity:.8;font-size:14px}
+button{pointer-events:auto;border:1px solid #00e5ff;background:rgba(0,229,255,.12);color:#e8f9ff;padding:12px 18px;border-radius:999px;font-weight:700;letter-spacing:1px;backdrop-filter:blur(6px)}
+button.on{background:#00e5ff;color:#001018}
+#bar{position:fixed;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));display:none;gap:8px;justify-content:center;flex-wrap:wrap;z-index:6}
+#bar button{padding:9px 14px;font-size:12px}
+#top{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;display:none;z-index:6}
+#msg{position:fixed;top:calc(14px + env(safe-area-inset-top));left:14px;font-size:12px;opacity:.85;z-index:6}
+</style></head><body>
+<div id="start"><h1>MY PERSONAL<br>HOLOGRAM</h1><p>Arahkan kamera ke poster. Karakter akan muncul di atasnya.</p>
+<button id="go" disabled>MEMUAT…</button><p id="st"></p>
+<img src="poster.jpg" style="width:120px;border-radius:8px;opacity:.8"></div>
+<div id="msg"></div><div id="top"><button id="fs">FULLSCREEN</button></div>
+<div id="bar"><button data-a="auto" class="on">AUTO</button><button data-a="idle">IDLE</button><button data-a="wave">WAVING</button><button data-a="jump">JUMPING</button><button data-a="clap">CLAPPING</button></div>
+<script type="module">
+const $=s=>document.querySelector(s), st=$('#st');
+let mode='auto';
+let THREE,MindARThree,Compiler;
+window.addEventListener('error',e=>{st.textContent='Error: '+e.message});
+window.addEventListener('unhandledrejection',e=>{st.textContent='Error: '+(e.reason&&e.reason.message||e.reason)});
+(async()=>{try{
+  THREE=await import('three');
+  const mt=await import('mindar-image-three'); MindARThree=mt.MindARThree;
+  if(!MindARThree)throw new Error('MindARThree tidak ada. export: '+Object.keys(mt).join(','));
+  let mi={};
+  try{mi=await import('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js')}catch(e1){
+    await new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';sc.onload=ok;sc.onerror=()=>no(new Error('file compiler gagal diunduh ('+e1.message+')'));document.head.appendChild(sc)});
+  }
+  Compiler=mi.Compiler||(mi.default&&mi.default.Compiler)||(window.MINDAR&&MINDAR.IMAGE&&MINDAR.IMAGE.Compiler)||mt.Compiler;
+  if(!Compiler)throw new Error('Compiler tidak ditemukan. export: '+Object.keys(mi).join(',')+' | three: '+Object.keys(mt).join(','));
+  $('#go').disabled=false;$('#go').textContent='START AR';
+}catch(e){st.textContent='Gagal memuat library: '+e.message}})();
+document.querySelectorAll('#bar button').forEach(b=>b.onclick=()=>{mode=b.dataset.a;document.querySelectorAll('#bar button').forEach(x=>x.classList.toggle('on',x===b))});
+$('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()};
+$('#go').onclick=async()=>{
+  $('#go').disabled=true;
+  try{
+    st.textContent='Menyiapkan target poster… (10–40 detik, hanya sekali per kunjungan)';
+    const img=new Image(); img.src='poster.jpg'; await img.decode();
+    const comp=new Compiler();
+    await comp.compileImageTargets([img],p=>st.textContent='Menyiapkan target poster… '+Math.round(p)+'%');
+    const url=URL.createObjectURL(new Blob([await comp.exportData()]));
+    st.textContent='Membuka kamera…';
+    const mindar=new MindARThree({container:document.body,imageTargetSrc:url,uiLoading:'no',uiScanning:'no',uiError:'no'});
+    const {renderer,scene,camera}=mindar;
+    renderer.setClearAlpha(0);
+    scene.add(new THREE.AmbientLight(0xffffff,1));
+    const anchor=mindar.addAnchor(0);
+    const tex=await new THREE.TextureLoader().loadAsync('character.png');
+    tex.colorSpace=THREE.SRGBColorSpace;
+    const ar=tex.image.width/tex.image.height, H=0.95, Wd=H*ar;
+    // pivot di kaki, berdiri tegak di atas poster
+    const pivot=new THREE.Group(); pivot.position.set(0,-0.25,0.01); pivot.rotation.x=Math.PI/2;
+    const geo=new THREE.PlaneGeometry(Wd,H); geo.translate(0,H/2,0);
+    const body=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide,alphaTest:.02}));
+    const glow=new THREE.Mesh(geo.clone().scale(1.06,1.03,1),new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.35,color:0x00e5ff,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+    glow.position.z=-0.004;
+    const scan=new THREE.Mesh(new THREE.PlaneGeometry(Wd*1.1,0.012),new THREE.MeshBasicMaterial({color:0x00e5ff,transparent:true,opacity:.7,blending:THREE.AdditiveBlending,depthWrite:false}));
+    pivot.add(glow,body,scan);
+    // cincin cahaya + bayangan di poster
+    const cv=document.createElement('canvas'); cv.width=cv.height=256; const g=cv.getContext('2d');
+    const gr=g.createRadialGradient(128,128,10,128,128,120); gr.addColorStop(0,'rgba(0,0,0,.55)'); gr.addColorStop(.6,'rgba(0,229,255,.25)'); gr.addColorStop(1,'rgba(0,229,255,0)');
+    g.fillStyle=gr; g.fillRect(0,0,256,256);
+    const disc=new THREE.Mesh(new THREE.PlaneGeometry(Wd*1.5,Wd*1.5),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthWrite:false}));
+    disc.position.set(0,-0.25,0.005);
+    const ring=new THREE.Mesh(new THREE.RingGeometry(Wd*.55,Wd*.58,64),new THREE.MeshBasicMaterial({color:0x00e5ff,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
+    ring.position.set(0,-0.25,0.008);
+    anchor.group.add(disc,ring,pivot);
+    anchor.onTargetFound=()=>{$('#msg').textContent='Poster terdeteksi'};
+    anchor.onTargetLost=()=>{$('#msg').textContent='Arahkan kamera ke poster'};
+    const seq=['idle','wave','jump','clap'];
+    const clock=new THREE.Clock();
+    await mindar.start();
+    $('#start').style.display='none'; $('#bar').style.display='flex'; $('#top').style.display='block'; $('#msg').textContent='Arahkan kamera ke poster';
+    renderer.setAnimationLoop(()=>{
+      const t=clock.getElapsedTime();
+      const a=mode==='auto'?seq[Math.floor(t/4)%4]:mode;
+      let y=0,sx=1,sy=1,rz=0,ry=0;
+      if(a==='idle'){sy=1+.012*Math.sin(t*2);sx=1-.006*Math.sin(t*2);rz=.012*Math.sin(t*.8)}
+      if(a==='wave'){rz=.1*Math.sin(t*9);ry=.12*Math.sin(t*4.5);sy=1+.01*Math.sin(t*2)}
+      if(a==='jump'){const s=Math.abs(Math.sin(t*3.2));y=.28*s;sy=1+.05*s;sx=1-.03*s}
+      if(a==='clap'){const s=Math.sin(t*14);sx=1-.04*Math.max(0,s);rz=.02*s;y=.01*Math.abs(Math.sin(t*7))}
+      pivot.position.z=0.01+y; pivot.scale.set(sx,sy,1); pivot.rotation.set(Math.PI/2,0,0); pivot.rotateY(ry); pivot.rotateZ(rz);
+      scan.position.y=(t*.5%1)*H; ring.material.opacity=.55+.3*Math.sin(t*3);
+      disc.scale.setScalar(1-.35*(y/.28||0)*.5);
+      renderer.render(scene,camera);
+    });
+  }catch(e){console.error(e);st.textContent='Gagal: '+e.message+' (pastikan HTTPS & izin kamera aktif)';$('#go').disabled=false}
+};
+</script></body></html>

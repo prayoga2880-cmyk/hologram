@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>My Personal Hologram</title>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
 <style>
 html,body{margin:0;height:100%;background:#050a1a;color:#e8f9ff;font-family:system-ui,sans-serif;overflow:hidden}
@@ -17,15 +17,21 @@ button.on{background:#00e5ff;color:#001018}
 #msg{position:fixed;top:calc(14px + env(safe-area-inset-top));left:14px;font-size:12px;opacity:.85;z-index:6}
 </style></head><body>
 <div id="start"><h1>MY PERSONAL<br>HOLOGRAM</h1><p>Arahkan kamera ke poster. Karakter akan muncul di atasnya.</p>
-<button id="go">START AR</button><p id="st"></p>
+<button id="go" disabled>MEMUAT…</button><p id="st"></p>
 <img src="poster.jpg" style="width:120px;border-radius:8px;opacity:.8"></div>
 <div id="msg"></div><div id="top"><button id="fs">FULLSCREEN</button></div>
 <div id="bar"><button data-a="auto" class="on">AUTO</button><button data-a="idle">IDLE</button><button data-a="wave">WAVING</button><button data-a="jump">JUMPING</button><button data-a="clap">CLAPPING</button></div>
 <script type="module">
-import * as THREE from 'three';
-import {MindARThree} from 'mindar-image-three';
 const $=s=>document.querySelector(s), st=$('#st');
 let mode='auto';
+let THREE,MindARThree;
+window.addEventListener('error',e=>{st.textContent='Error: '+e.message});
+window.addEventListener('unhandledrejection',e=>{st.textContent='Error: '+(e.reason&&e.reason.message||e.reason)});
+(async()=>{try{
+  if(typeof MINDAR==='undefined')throw new Error('MindAR (compiler) tidak termuat');
+  THREE=await import('three'); ({MindARThree}=await import('mindar-image-three'));
+  $('#go').disabled=false;$('#go').textContent='START AR';
+}catch(e){st.textContent='Gagal memuat library: '+e.message}})();
 document.querySelectorAll('#bar button').forEach(b=>b.onclick=()=>{mode=b.dataset.a;document.querySelectorAll('#bar button').forEach(x=>x.classList.toggle('on',x===b))});
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()};
 $('#go').onclick=async()=>{
@@ -43,7 +49,7 @@ $('#go').onclick=async()=>{
     scene.add(new THREE.AmbientLight(0xffffff,1));
     const anchor=mindar.addAnchor(0);
     const tex=await new THREE.TextureLoader().loadAsync('character.png');
-    tex.encoding=THREE.sRGBEncoding;
+    tex.colorSpace=THREE.SRGBColorSpace;
     const ar=tex.image.width/tex.image.height, H=0.95, Wd=H*ar;
     // pivot di kaki, berdiri tegak di atas poster
     const pivot=new THREE.Group(); pivot.position.set(0,-0.25,0.01); pivot.rotation.x=Math.PI/2;
